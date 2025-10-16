@@ -1,2 +1,37 @@
 .aider*
 .env
+# Environment
+.env
+venv/
+.env/
+
+# Logs
+*.log
+logs/
+
+# Data files
+*.csv
+*.json
+data/
+
+# Docker
+docker-data/
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Testing
+.coverage
+htmlcov/
