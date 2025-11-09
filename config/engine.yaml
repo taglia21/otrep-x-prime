@@ -1,0 +1,10 @@
+engine:
+  strategy_name: "core_quant_model"
+  starting_capital: 1000000
+  redis_host: "redis"
+  risk_limits:
+    max_position: 5000
+    min_signal: 0.05
+    max_drawdown: 0.1
+  log_channel: "execution_log"
+  signal_channel: "trade_signals"

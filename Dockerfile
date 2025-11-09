@@ -1,35 +1,25 @@
-# OTREP-X PRIME Core Container
-FROM python:3.10-slim-bullseye
+﻿FROM python:3.11-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-ENV APP_HOME /opt/otrep-x
+WORKDIR /app
 
-# System dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create application user and directory
-RUN useradd -m -d $APP_HOME -s /bin/bash otrep_user
-WORKDIR $APP_HOME
-
-# Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libffi-dev libssl-dev git && \
+    pip install --no-cache-dir -r requirements.txt && \
+    rm -rf /var/lib/apt/lists/*
+RUN pip install redis prometheus-client
 
-# Copy application code
-COPY src/ $APP_HOME/src
-COPY config/ $APP_HOME/config
 
-# Security hardening
-RUN chown -R otrep_user:otrep_user $APP_HOME && \
-    chmod -R 750 $APP_HOME
+COPY src /app/src
+COPY data /app/data
 
-USER otrep_user
+COPY config.yaml /app/config.yaml
+# Ensure Python finds all local modules
+ENV PYTHONPATH="/app/src"
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONIOENCODING="utf-8"
 
-# Default command
-EXPOSE 8000
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "src.main:app"]
+CMD ["python", "-m", "src.core.app_stage02_backtest"]
+# --- Streamlit Dashboard Support ---
+RUN pip install streamlit watchdog
+

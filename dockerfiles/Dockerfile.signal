@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential libffi-dev libssl-dev git \
+    && pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r /app/requirements.txt \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY src /app/src
+
+ENV PYTHONPATH=/app/src
+
+CMD ["python", "-m", "strategies.signal_generator"]

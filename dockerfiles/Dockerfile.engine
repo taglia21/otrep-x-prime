@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential libffi-dev libssl-dev git \
+    && pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r /app/requirements.txt \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy source and config
+COPY src /app/src
+COPY config /app/config
+
+# <-- THIS LINE IS CRITICAL so Python can import core.* from /app/src
+ENV PYTHONPATH=/app/src
+
+# Start the engine module
+CMD ["python", "-m", "core.execution_engine"]

@@ -1,0 +1,27 @@
+# ==============================================================
+# OTREP-X PRIME — PHASE VI CONFIG
+# ==============================================================
+
+strategies:
+  - StoichiometricStrategy
+  - MomentumStrategy
+  - MeanReversionStrategy
+
+risk_management:
+  max_position: 100
+  stop_loss: 0.03
+  take_profit: 0.07
+  vol_target: 0.02
+
+markets:
+  US:
+    tz_offset: -5
+    symbols: [AAPL, MSFT]
+  EU:
+    tz_offset: 1
+    symbols: [BMW.DE]
+  ASIA:
+    tz_offset: 9
+    symbols: [7203.T]
+
+mode: live

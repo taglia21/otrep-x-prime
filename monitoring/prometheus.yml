@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'otrep-supervisor'
+    static_configs:
+      - targets: ['otrep-supervisor:8000']
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:9121']
+
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['cadvisor:8080']

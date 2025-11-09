@@ -1,0 +1,37 @@
+﻿# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+build/
+dist/
+
+# venvs & caches
+.venv/
+venv/
+pip-cache/
+.cache/
+.mypy_cache/
+.pytype/
+
+# local / large data
+*.log
+*.csv
+*.parquet
+*.sqlite*
+*.db
+data/
+logs/
+
+# VCS & OS cruft
+.git
+.git/*
+.DS_Store
+Thumbs.db
+
+# Node / misc
+node_modules/
+
+# secrets (we’ll pass via --env-file)
+.env
