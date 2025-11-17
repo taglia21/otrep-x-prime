@@ -176,7 +176,7 @@ jobs:
           python scripts/burn_in_orchestrator.py --config config/burn_in_actions.yaml 2>&1 | tee logs/burn_in/github_actions_run.log
       
       - name: Upload burn-in results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: burn-in-results-${{ github.run_number }}
@@ -187,7 +187,7 @@ jobs:
           retention-days: 30
       
       - name: Upload service logs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: service-logs-${{ github.run_number }}
