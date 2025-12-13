@@ -2,9 +2,12 @@
   "name": "OTREP-X PRIME",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/apt-packages:1": {
+      "packages": "cmake"
+    }
   },
-  "postCreateCommand": "pip install -r requirements.txt",
+  "postCreateCommand": "python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt",
   "forwardPorts": [3000, 5001, 8000, 9090],
   "customizations": {
     "vscode": {
