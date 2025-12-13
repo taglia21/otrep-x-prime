@@ -1,0 +1,32 @@
+# Secrets / env files (never commit)
+.env
+.env.*
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Testing / tooling
+.pytest_cache/
+.mypy_cache/
+
+# CI artifacts
+ci_artifacts/
+
+# Logs
+logs/
+*.log
+
+# Build artifacts
+cpp/build/
+build/
+dist/
+
+# Binaries
+*.o
+*.a
+*.so
+*.dylib
+*.dll
