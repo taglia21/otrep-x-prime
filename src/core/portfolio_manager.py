@@ -32,6 +32,24 @@ class PortfolioManager:
         )
         log.info(f"[PORTFOLIO] Updated {symbol} → Qty={new_qty}, Avg={pos['avg_price']:.2f}")
 
+    def holdings_snapshot(self) -> dict[str, dict[str, float]]:
+        return {str(sym): {"qty": float(v["qty"]), "avg_price": float(v["avg_price"])} for sym, v in self.positions.items()}
+
+    def sync_from_broker_positions(self, positions) -> None:
+        """Overwrite internal positions from broker truth.
+
+        positions: Iterable of objects with attributes/keys: symbol, qty, avg_entry_price.
+        """
+        self.positions.clear()
+        for p in positions:
+            symbol = getattr(p, "symbol", None) or p.get("symbol")
+            qty = getattr(p, "qty", None) if getattr(p, "qty", None) is not None else p.get("qty")
+            avg_entry_price = getattr(p, "avg_entry_price", None)
+            if avg_entry_price is None and hasattr(p, "get"):
+                avg_entry_price = p.get("avg_entry_price")
+            self.positions[str(symbol)]["qty"] = float(qty or 0.0)
+            self.positions[str(symbol)]["avg_price"] = float(avg_entry_price or 0.0)
+
     # ------------------------------------------------------
 
     def consolidate(self):
