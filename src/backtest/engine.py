@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from .types import BacktestConfig, Strategy
+from src.risk.manager import RiskLimits, RiskManager
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,13 @@ class BacktestEngine:
     def __init__(self, *, cfg: BacktestConfig):
         self.cfg = cfg
 
-    def run(self, *, prices: pd.DataFrame, strategy: Strategy) -> BacktestResult:
+    def run(
+        self,
+        *,
+        prices: pd.DataFrame,
+        strategy: Strategy,
+        risk_manager: RiskManager | None = None,
+    ) -> BacktestResult:
         panel = _to_price_panel(prices)
 
         if self.cfg.fill_delay_bars < 1:
@@ -112,6 +119,10 @@ class BacktestEngine:
         fills: list[TradeFill] = []
 
         missing_fill_prices = 0
+        risk_denied_steps = 0
+        last_risk_reasons: list[str] = []
+
+        rm = risk_manager or RiskManager(RiskLimits())
 
         for i in range(0, len(panel.index) - self.cfg.fill_delay_bars):
             t_decide = panel.index[i]
@@ -128,6 +139,21 @@ class BacktestEngine:
             pos_rows.append({"timestamp": t_decide, **{s: int(holdings[s]) for s in symbols}})
 
             targets = _truthy_weights(strategy.target_weights(t=t_decide, history=history))
+
+            # Risk: validate proposed rebalance in weight space before trading.
+            current_weights: dict[str, float] = {}
+            for s in symbols:
+                p = float(px_now.get(s, np.nan))
+                if np.isfinite(p) and p > 0 and equity_now != 0:
+                    current_weights[s] = float(holdings[s] * p / equity_now)
+                else:
+                    current_weights[s] = 0.0
+
+            decision = rm.check_rebalance(equity=equity_now, current_weights=current_weights, target_weights=targets)
+            if not decision.allowed:
+                risk_denied_steps += 1
+                last_risk_reasons = list(decision.reasons)
+                continue
 
             # Fill prices at t_fill.
             px_fill = panel.loc[t_fill]
@@ -220,6 +246,8 @@ class BacktestEngine:
             "fill_delay_bars": int(self.cfg.fill_delay_bars),
             "starting_cash": float(self.cfg.starting_cash),
             "missing_fill_prices": int(missing_fill_prices),
+            "risk_denied_steps": int(risk_denied_steps),
+            "last_risk_reasons": last_risk_reasons,
         }
 
         return BacktestResult(
