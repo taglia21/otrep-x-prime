@@ -5,7 +5,7 @@ Handles synchronized data feeds and execution across multiple markets.
 
 import logging
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 log = logging.getLogger(__name__)
 

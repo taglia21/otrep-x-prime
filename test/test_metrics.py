@@ -4,7 +4,6 @@ import pytest
 
 from src.analytics.metrics import (
     TailRisk,
-    WinLossStats,
     calmar_ratio,
     cagr,
     historical_var_es,

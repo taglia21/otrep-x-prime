@@ -2,18 +2,41 @@
 async_stream_engine.py
 Phase VII – Asynchronous Streaming & Multi-Threaded Execution
 """
-import os, json, time, asyncio, threading, logging, websockets
-import numpy as np
-from datetime import datetime
+
+import asyncio
+import json
+import logging
+import os
+import threading
+import time
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
+
+import websockets
+
+from core.alpaca_rest import AlpacaRestClient
 from core.strategy_registry import get_strategies
 from core.ml_optimizer import MLOptimizer
 from core.risk_manager import RiskManager
 from core.portfolio_manager import PortfolioManager
-from core.live_execution_engine import AlpacaBroker
 from core.safety import assert_not_killed
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
+
+
+class AlpacaBroker:
+    """Minimal broker adapter for legacy async engine.
+
+    Uses the hardened Alpaca REST client. Order submission remains blocked by
+    default via `core.safety.guard_order_submission` inside `AlpacaRestClient`.
+    """
+
+    def __init__(self, *, paper: bool = True):
+        self._client = AlpacaRestClient(paper=paper)
+
+    def submit_order(self, symbol: str, qty: float, side: str) -> None:
+        self._client.submit_order(symbol=symbol, qty=qty, side=side, order_type="market", tif="day")
 
 # ---------------------------------------------------------------------
 # WebSocket consumer for Alpaca data stream
@@ -22,7 +45,13 @@ class AlpacaStream:
     def __init__(self, symbols):
         self.key    = os.getenv("ALPACA_API_KEY_ID")
         self.secret  = os.getenv("ALPACA_API_SECRET_KEY")
-        self.url    = "wss://stream.data.alpaca.markets/v2/sip"
+
+        feed = (os.getenv("ALPACA_DATA_FEED") or "iex").strip().lower()
+        if feed not in {"iex", "sip"}:
+            feed = "iex"
+
+        self.url = (os.getenv("ALPACA_STREAM_URL") or f"wss://stream.data.alpaca.markets/v2/{feed}").strip()
+        log.info(f"[STREAM] feed={feed} url={self.url}")
         self.symbols = symbols
         self.queue  = asyncio.Queue()
         self.ws     = None
@@ -70,6 +99,14 @@ class AsyncEngine:
         self.stream = AlpacaStream(self.symbols)
         self.last_ping = time.time()
 
+        self._price_last: dict[str, float] = {}
+        self._returns: dict[str, deque[float]] = {s: deque(maxlen=50) for s in self.symbols}
+
+        self._executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="async-signal")
+        self._pending: deque[Future[None]] = deque()
+        self._pending_lock = threading.Lock()
+        self._max_pending = 64
+
     async def handle_message(self, msg):
         if not msg or not isinstance(msg, list):
             return
@@ -79,16 +116,34 @@ class AsyncEngine:
                 price  = entry.get("p") or entry.get("ap") or 0
                 if price <= 0:
                     continue
-                threading.Thread(target=self.process_signal, args=(symbol, price), daemon=True).start()
+
+                p = float(price)
+                prev = self._price_last.get(symbol)
+                if prev is not None and prev > 0:
+                    r = p / prev - 1.0
+                    self._returns.setdefault(symbol, deque(maxlen=50)).append(float(r))
+                self._price_last[symbol] = p
+
+                self._submit_signal(symbol=symbol, price=p)
             elif "success" in entry and entry["msg"] == "authenticated":
                 log.info("[STREAM] Authenticated successfully.")
             elif "time" in entry:
                 self.last_ping = time.time()
 
+    def _submit_signal(self, *, symbol: str, price: float) -> None:
+        with self._pending_lock:
+            while self._pending and self._pending[0].done():
+                self._pending.popleft()
+            if len(self._pending) >= self._max_pending:
+                log.warning(f"[ASYNC] backlog_full symbol={symbol} pending={len(self._pending)}")
+                return
+            fut = self._executor.submit(self.process_signal, symbol, price)
+            self._pending.append(fut)
+
     def process_signal(self, symbol, price):
         try:
             assert_not_killed()
-            recent_returns = [np.random.normal(0, 0.01) for _ in range(3)]
+            recent_returns = list(self._returns.get(symbol, deque()))
             size = self.risk.size_position(symbol, recent_returns)
             signals = {s.__class__.__name__: s.generate_signal(price) for s in self.strategies}
             action = self.optimizer.choose_action(signals)

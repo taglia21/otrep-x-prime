@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -124,9 +124,15 @@ class BacktestEngine:
 
         rm = risk_manager or RiskManager(RiskLimits())
 
+        idx = panel.index.to_numpy()
         for i in range(0, len(panel.index) - self.cfg.fill_delay_bars):
-            t_decide = panel.index[i]
-            t_fill = panel.index[i + self.cfg.fill_delay_bars]
+            t_decide = pd.Timestamp(idx[i])
+            t_fill = pd.Timestamp(idx[i + self.cfg.fill_delay_bars])
+            if t_decide is pd.NaT or t_fill is pd.NaT:
+                continue
+
+            t_decide = cast(pd.Timestamp, t_decide)
+            t_fill = cast(pd.Timestamp, t_fill)
 
             # History includes prices through decision time (inclusive).
             history = panel.iloc[: i + 1].copy()

@@ -35,6 +35,9 @@ def main():
         msg = pubsub.get_message(timeout=1.0)
         if msg and msg.get("type") == "message":
             raw = msg.get("data")
+            if raw is None:
+                time.sleep(0.1)
+                continue
             try:
                 payload = json.loads(raw)
             except Exception:

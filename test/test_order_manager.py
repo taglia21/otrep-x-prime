@@ -1,7 +1,5 @@
 from unittest.mock import Mock
 
-import pytest
-
 from src.core.order_journal import OrderJournal
 from src.core.order_manager import OrderManager, deterministic_client_order_id
 

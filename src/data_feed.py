@@ -19,7 +19,7 @@ class DataFeed:
             else:
                 raise ValueError("Missing price/close/adj close column")
 
-        if "date" not in df.columns and df.index.name and "date" in df.index.name.lower():
+        if "date" not in df.columns and isinstance(df.index.name, str) and "date" in df.index.name.lower():
             df.reset_index(inplace=True)
             df.rename(columns={df.columns[0]: "date"}, inplace=True)
 
