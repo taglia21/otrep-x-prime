@@ -1,12 +1,13 @@
-"""
-ml_optimizer.py
+"""ml_optimizer.py
+
 Adaptive meta-learning layer for OTREP-X PRIME.
 Uses reinforcement learning–style feedback to re-weight strategies dynamically.
 """
 
-import numpy as np
 import logging
 from collections import deque
+
+import numpy as np
 
 log = logging.getLogger(__name__)
 
@@ -36,11 +37,10 @@ class MLOptimizer:
         for s, history in self.performance.items():
             if len(history) == 0:
                 continue
-            avg_reward = np.mean(history)
-            self.weights[s] += self.learning_rate * avg_reward
+            avg_reward = float(np.mean(history))
+            self.weights[s] += float(self.learning_rate) * avg_reward
         self._normalize()
-        log.info(f"[ML] Updated strategy weights: "
-                 + ", ".join(f"{k}={v:.2f}" for k, v in self.weights.items()))
+        log.info("[ML] Updated strategy weights: " + ", ".join(f"{k}={v:.2f}" for k, v in self.weights.items()))
 
     def choose_action(self, signals):
         """

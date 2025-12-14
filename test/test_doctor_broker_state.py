@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 from src.core import doctor as doctor_mod
 
 

@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from src.core.safety import assert_not_killed, guard_order_submission

@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any
+from typing import Protocol, Sequence
 
-from core.alpaca_rest import AlpacaOrder, AlpacaRestClient
-from core.order_journal import JournalOrder, OrderJournal
+from core.order_journal import OrderJournal
 
 
 @dataclass(frozen=True)
@@ -21,6 +17,49 @@ class OrderDecision:
 
 
 _FINAL_STATUSES = {"filled", "canceled", "rejected", "expired"}
+
+
+class OrderLike(Protocol):
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def client_order_id(self) -> str | None: ...
+
+    @property
+    def symbol(self) -> str: ...
+
+    @property
+    def side(self) -> str: ...
+
+    @property
+    def qty(self) -> float: ...
+
+    @property
+    def filled_qty(self) -> float: ...
+
+    @property
+    def status(self) -> str: ...
+
+
+class AlpacaLike(Protocol):
+    def get_open_orders(self) -> Sequence[OrderLike]:
+        ...
+
+    def submit_order(
+        self,
+        *,
+        symbol: str,
+        qty: float,
+        side: str,
+        order_type: str = "market",
+        tif: str = "day",
+        client_order_id: str | None = None,
+    ) -> tuple[OrderLike | None, float, int]:
+        ...
+
+    def get_order(self, order_id: str) -> OrderLike:
+        ...
 
 
 def deterministic_client_order_id(
@@ -46,7 +85,7 @@ class OrderManager:
     def __init__(
         self,
         *,
-        alpaca: AlpacaRestClient,
+        alpaca: AlpacaLike,
         journal: OrderJournal,
     ):
         self.alpaca = alpaca
@@ -163,7 +202,7 @@ class OrderManager:
             alpaca_order_id=order.id,
         )
 
-    def poll_and_update(self, *, alpaca_order_id: str) -> AlpacaOrder:
+    def poll_and_update(self, *, alpaca_order_id: str) -> OrderLike:
         o = self.alpaca.get_order(alpaca_order_id)
         if o.client_order_id:
             self.journal.upsert(

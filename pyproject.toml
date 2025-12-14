@@ -1,0 +1,46 @@
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+
+include = [
+  "src/analytics",
+  "src/backtest",
+  "src/core",
+  "src/risk",
+  "test",
+  "core",
+  "risk",
+  "strategies",
+]
+
+exclude = [
+  "**/__pycache__",
+  ".venv",
+  "cpp",
+  "cpp/build",
+  "src/app_stage*.py",
+  "src/core/app_stage*.py",
+  "src/dashboard",
+  "src/strategies",
+]
+
+executionEnvironments = [
+  { root = ".", extraPaths = ["src"] },
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 160
+
+exclude = [
+  ".venv",
+  "cpp",
+  "cpp/build",
+  "src/app_stage*.py",
+  "src/core/app_stage*.py",
+  "src/dashboard",
+  "src/strategies",
+]
+
+[tool.ruff.lint]
+select = ["E", "F"]

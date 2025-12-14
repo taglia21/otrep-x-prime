@@ -2,18 +2,40 @@
 async_stream_engine.py
 Phase VII – Asynchronous Streaming & Multi-Threaded Execution
 """
-import os, json, time, asyncio, threading, logging, websockets
+
+import asyncio
+import json
+import logging
+import os
+import threading
+import time
+
 import numpy as np
-from datetime import datetime
+import websockets
+
+from core.alpaca_rest import AlpacaRestClient
 from core.strategy_registry import get_strategies
 from core.ml_optimizer import MLOptimizer
 from core.risk_manager import RiskManager
 from core.portfolio_manager import PortfolioManager
-from core.live_execution_engine import AlpacaBroker
 from core.safety import assert_not_killed
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
+
+
+class AlpacaBroker:
+    """Minimal broker adapter for legacy async engine.
+
+    Uses the hardened Alpaca REST client. Order submission remains blocked by
+    default via `core.safety.guard_order_submission` inside `AlpacaRestClient`.
+    """
+
+    def __init__(self, *, paper: bool = True):
+        self._client = AlpacaRestClient(paper=paper)
+
+    def submit_order(self, symbol: str, qty: float, side: str) -> None:
+        self._client.submit_order(symbol=symbol, qty=qty, side=side, order_type="market", tif="day")
 
 # ---------------------------------------------------------------------
 # WebSocket consumer for Alpaca data stream

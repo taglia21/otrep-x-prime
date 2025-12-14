@@ -7,4 +7,5 @@ watchdog
 python-dotenv
 alpaca-py
 redis
+prometheus-client
 

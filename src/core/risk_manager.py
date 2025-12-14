@@ -61,3 +61,17 @@ class RiskManager:
             return True
 
         return False
+
+    def validate_order(self, price, qty, pnl=None):
+        """Legacy pre-trade check used by prototype executors.
+
+        This does not place orders; it only validates basic constraints.
+        """
+        try:
+            if price is None or float(price) <= 0:
+                return False
+            if abs(int(qty)) > int(self.max_position):
+                return False
+        except Exception:
+            return False
+        return True

@@ -11,6 +11,7 @@ class Strategy(Protocol):
 
     def target_weights(self, *, t: pd.Timestamp, history: pd.DataFrame) -> dict[str, float]:
         """Return target weights by symbol (e.g., {'AAPL': 0.5, 'MSFT': 0.5})."""
+        ...
 
 
 @dataclass(frozen=True)
