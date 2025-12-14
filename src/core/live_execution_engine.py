@@ -28,6 +28,11 @@ class AlpacaBroker:
             "Content-Type": "application/json"
         }
 
+    @staticmethod
+    def _no_orders_enabled() -> bool:
+        val = (os.getenv("NO_ORDERS") or "").strip().lower()
+        return val in {"1", "true", "yes", "y", "on"}
+
     def get_quote(self, symbol):
         r = requests.get(f"https://data.alpaca.markets/v2/stocks/{symbol}/quotes/latest", headers=self.headers)
         if r.status_code != 200:
@@ -36,6 +41,10 @@ class AlpacaBroker:
         return float(q.get("ap", q.get("bp", 0)))
 
     def submit_order(self, symbol, qty, side, order_type="market", tif="day"):
+        if self._no_orders_enabled():
+            log.warning(f"[BROKER] NO_ORDERS=1 → skipping {side.upper()} {symbol} x{qty}")
+            return None
+
         payload = {
             "symbol": symbol, "qty": qty, "side": side,
             "type": order_type, "time_in_force": tif

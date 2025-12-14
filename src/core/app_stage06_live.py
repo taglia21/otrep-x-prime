@@ -1,5 +1,11 @@
 """
 Phase VI – Launch Live Execution Engine
+
+Run from repo root:
+    python src/core/app_stage06_live.py
+
+Safety:
+    Set NO_ORDERS=1 to prevent any order placement (quotes may still be fetched).
 """
 import yaml, logging
 from core.live_execution_engine import LiveExecutionEngine

@@ -21,11 +21,25 @@ class AlpacaStream:
     def __init__(self, symbols):
         self.key    = os.getenv("ALPACA_API_KEY_ID")
         self.secret  = os.getenv("ALPACA_API_SECRET_KEY")
-        self.url    = "wss://stream.data.alpaca.markets/v2/sip"
+        self.url    = self._resolve_stream_url()
         self.symbols = symbols
         self.queue  = asyncio.Queue()
         self.ws     = None
         self.running = True
+
+    def _resolve_stream_url(self) -> str:
+        # Allow explicit override first.
+        explicit = (os.getenv("ALPACA_STREAM_URL") or "").strip()
+        if explicit:
+            return explicit
+
+        # Default to IEX to work with standard Alpaca keys/accounts.
+        # SIP requires additional data entitlements.
+        feed = (os.getenv("ALPACA_DATA_FEED") or "iex").strip().lower()
+        if feed not in {"iex", "sip"}:
+            feed = "iex"
+
+        return f"wss://stream.data.alpaca.markets/v2/{feed}"
 
     async def connect(self):
         async with websockets.connect(self.url) as ws:
