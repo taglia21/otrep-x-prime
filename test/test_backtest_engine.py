@@ -2,6 +2,7 @@ import pandas as pd
 
 from src.backtest.engine import BacktestEngine
 from src.backtest.types import BacktestConfig
+from src.risk.manager import RiskLimits, RiskManager
 
 
 class EqualWeightStrategy:
@@ -40,3 +41,17 @@ def test_backtest_engine_equal_weight_no_costs_golden():
     assert equity.tolist() == expected.tolist()
 
     assert result.diagnostics["missing_fill_prices"] == 0
+
+
+def test_backtest_engine_risk_denies_rebalance_blocks_trades():
+    prices = pd.read_csv("data/sample_prices.csv")
+
+    # Force a denial via very low turnover limit.
+    rm = RiskManager(RiskLimits(max_turnover_per_step=0.01))
+    engine = BacktestEngine(cfg=BacktestConfig(starting_cash=10_000.0))
+
+    strat = EqualWeightStrategy({"AAPL": 0.5, "MSFT": 0.5})
+    result = engine.run(prices=prices, strategy=strat, risk_manager=rm)
+
+    assert result.diagnostics["risk_denied_steps"] > 0
+    assert len(result.fills) == 0

@@ -10,6 +10,7 @@ from core.ml_optimizer import MLOptimizer
 from core.risk_manager import RiskManager
 from core.portfolio_manager import PortfolioManager
 from core.live_execution_engine import AlpacaBroker
+from core.safety import assert_not_killed
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class AlpacaStream:
     async def connect(self):
         async with websockets.connect(self.url) as ws:
             self.ws = ws
+            assert_not_killed()
             await ws.send(json.dumps({
                 "action": "auth",
                 "key": self.key,
@@ -42,6 +44,7 @@ class AlpacaStream:
             }))
             log.info(f"[STREAM] Subscribed to {self.symbols}")
             async for msg in ws:
+                assert_not_killed()
                 data = json.loads(msg)
                 await self.queue.put(data)
                 if not self.running:
@@ -84,6 +87,7 @@ class AsyncEngine:
 
     def process_signal(self, symbol, price):
         try:
+            assert_not_killed()
             recent_returns = [np.random.normal(0, 0.01) for _ in range(3)]
             size = self.risk.size_position(symbol, recent_returns)
             signals = {s.__class__.__name__: s.generate_signal(price) for s in self.strategies}
@@ -102,6 +106,7 @@ class AsyncEngine:
         log.info("[ENGINE] Starting asynchronous streaming engine …")
         consumer = asyncio.create_task(self.stream.connect())
         while self.stream.running:
+            assert_not_killed()
             msg = await self.stream.queue.get()
             await self.handle_message(msg)
             if time.time() - self.last_ping > 30:

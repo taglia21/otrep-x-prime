@@ -24,4 +24,7 @@ markets:
     tz_offset: 9
     symbols: [7203.T]
 
-mode: live
+# Safety-first default.
+# - "paper" is the default runtime profile.
+# - Live execution should be an explicit override (and still requires ALLOW_ORDERS=1 and NO_ORDERS=0).
+mode: paper
