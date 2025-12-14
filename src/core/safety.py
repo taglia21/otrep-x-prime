@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 
 
 _TRUE = {"1", "true", "yes", "on", "y", "t"}
@@ -17,12 +16,9 @@ def assert_not_killed() -> None:
         raise SystemExit(2)
 
 
-@dataclass(frozen=True)
 class SafetyError(RuntimeError):
-    message: str
-
-    def __str__(self) -> str:  # pragma: no cover
-        return self.message
+    def __init__(self, message: str):
+        super().__init__(str(message))
 
 
 def orders_allowed(*, require_ack: bool = False) -> bool:

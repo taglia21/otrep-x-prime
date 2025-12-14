@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import threading
 import time
 from collections import deque
@@ -15,11 +16,9 @@ from concurrent.futures import Future, ThreadPoolExecutor
 import websockets
 
 from core.alpaca_rest import AlpacaRestClient
-from core.strategy_registry import get_strategies
-from core.ml_optimizer import MLOptimizer
-from core.risk_manager import RiskManager
-from core.portfolio_manager import PortfolioManager
+from core.retry import RetryPolicy, compute_delay_s
 from core.safety import assert_not_killed
+from core.trading_halt import guard_not_halted, halt_trading, is_halted
 
 logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 log = logging.getLogger(__name__)
@@ -36,13 +35,14 @@ class AlpacaBroker:
         self._client = AlpacaRestClient(paper=paper)
 
     def submit_order(self, symbol: str, qty: float, side: str) -> None:
+        guard_not_halted()
         self._client.submit_order(symbol=symbol, qty=qty, side=side, order_type="market", tif="day")
 
 # ---------------------------------------------------------------------
 # WebSocket consumer for Alpaca data stream
 # ---------------------------------------------------------------------
 class AlpacaStream:
-    def __init__(self, symbols):
+    def __init__(self, symbols, *, max_failures: int = 7):
         self.key    = os.getenv("ALPACA_API_KEY_ID")
         self.secret  = os.getenv("ALPACA_API_SECRET_KEY")
 
@@ -56,28 +56,70 @@ class AlpacaStream:
         self.queue  = asyncio.Queue()
         self.ws     = None
         self.running = True
+        self._force_reconnect = False
+        self._failures = 0
+        self._max_failures = int(max_failures)
+        self._rng = random.Random(0)
+        self._policy = RetryPolicy(max_attempts=max(1, self._max_failures), base_delay_s=1.0, max_delay_s=30.0)
+
+    async def force_reconnect(self) -> None:
+        self._force_reconnect = True
+        ws = self.ws
+        if ws is not None:
+            try:
+                await ws.close()
+            except Exception:
+                pass
 
     async def connect(self):
-        async with websockets.connect(self.url) as ws:
-            self.ws = ws
+        while self.running:
             assert_not_killed()
-            await ws.send(json.dumps({
-                "action": "auth",
-                "key": self.key,
-                "secret": self.secret
-            }))
-            await ws.send(json.dumps({
-                "action": "subscribe",
-                "trades": self.symbols,
-                "quotes": self.symbols
-            }))
-            log.info(f"[STREAM] Subscribed to {self.symbols}")
-            async for msg in ws:
-                assert_not_killed()
-                data = json.loads(msg)
-                await self.queue.put(data)
-                if not self.running:
+            try:
+                async with websockets.connect(self.url) as ws:
+                    self.ws = ws
+                    self._force_reconnect = False
+                    self._failures = 0
+
+                    assert_not_killed()
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "action": "auth",
+                                "key": self.key,
+                                "secret": self.secret,
+                            }
+                        )
+                    )
+                    await ws.send(
+                        json.dumps(
+                            {
+                                "action": "subscribe",
+                                "trades": self.symbols,
+                                "quotes": self.symbols,
+                            }
+                        )
+                    )
+                    log.info(f"[STREAM] Subscribed to {self.symbols}")
+
+                    async for msg in ws:
+                        assert_not_killed()
+                        if not self.running:
+                            break
+                        if self._force_reconnect:
+                            break
+                        data = json.loads(msg)
+                        await self.queue.put(data)
+            except SystemExit:
+                raise
+            except Exception as e:
+                self._failures += 1
+                if self._failures >= self._max_failures:
+                    halt_trading(reason=f"ws_reconnect_failures count={self._failures} last={type(e).__name__}")
+                    self.running = False
                     break
+
+                delay = compute_delay_s(attempt=self._failures, policy=self._policy, rng=self._rng)
+                await asyncio.sleep(delay)
 
     def stop(self):
         self.running = False
@@ -87,6 +129,13 @@ class AlpacaStream:
 # ---------------------------------------------------------------------
 class AsyncEngine:
     def __init__(self, config):
+        # Import these lazily so that unit tests can import AlpacaStream without
+        # requiring optional strategy modules.
+        from core.ml_optimizer import MLOptimizer
+        from core.portfolio_manager import PortfolioManager
+        from core.risk_manager import RiskManager
+        from core.strategy_registry import get_strategies
+
         self.cfg = config
         self.strategies = get_strategies(config["strategies"])
         self.optimizer = MLOptimizer(config["strategies"], learning_rate=0.2)
@@ -131,6 +180,7 @@ class AsyncEngine:
                 self.last_ping = time.time()
 
     def _submit_signal(self, *, symbol: str, price: float) -> None:
+        assert_not_killed()
         with self._pending_lock:
             while self._pending and self._pending[0].done():
                 self._pending.popleft()
@@ -143,6 +193,8 @@ class AsyncEngine:
     def process_signal(self, symbol, price):
         try:
             assert_not_killed()
+            if is_halted():
+                return
             recent_returns = list(self._returns.get(symbol, deque()))
             size = self.risk.size_position(symbol, recent_returns)
             signals = {s.__class__.__name__: s.generate_signal(price) for s in self.strategies}
@@ -166,8 +218,5 @@ class AsyncEngine:
             await self.handle_message(msg)
             if time.time() - self.last_ping > 30:
                 log.warning("[STREAM] No heartbeat, attempting reconnect …")
-                self.stream.stop()
-                await asyncio.sleep(5)
-                self.stream = AlpacaStream(self.symbols)
-                consumer = asyncio.create_task(self.stream.connect())
+                await self.stream.force_reconnect()
         await consumer
