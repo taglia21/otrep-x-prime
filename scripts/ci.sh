@@ -12,7 +12,7 @@ python -V | tee ci_artifacts/python_version.log
 # No API keys required: this script only does local/static checks.
 
 echo "== Compileall (tracked python only) ==" | tee -a ci_artifacts/step.log
-TRACKED_PY_FILES="$(git ls-files '*.py' || true)"
+TRACKED_PY_FILES="$(git ls-files | grep -E '\.py$' || true)"
 if [[ -n "$TRACKED_PY_FILES" ]]; then
   # Compile tracked Python files only to avoid scanning untracked build outputs.
   python - <<'PY' 2>&1 | tee ci_artifacts/compileall.log
@@ -20,7 +20,8 @@ import os
 import py_compile
 import subprocess
 
-files = subprocess.check_output(['git', 'ls-files', '*.py'], text=True).splitlines()
+files = subprocess.check_output(['git', 'ls-files'], text=True).splitlines()
+files = [p for p in files if p.endswith('.py')]
 ok = True
 for path in files:
     try:

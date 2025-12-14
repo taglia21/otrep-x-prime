@@ -24,7 +24,7 @@ jobs:
         image: timescale/timescaledb:latest-pg14
         env:
           POSTGRES_USER: otrep_user
-          POSTGRES_PASSWORD: otrep_pass_2024
+          POSTGRES_PASSWORD: ${{ github.run_id }}
           POSTGRES_DB: otrep_db
         ports:
           - 5432:5432
@@ -102,7 +102,7 @@ jobs:
             port: 5432
             name: otrep_db
             user: otrep_user
-            password: otrep_pass_2024
+            password: ${{ github.run_id }}
           
           prometheus:
             url: http://localhost:9090
