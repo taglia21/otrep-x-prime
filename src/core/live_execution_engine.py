@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from core.alpaca_rest import AlpacaRestClient
+from core.order_intent_journal import OrderIntentJournal
 from core.jsonl_journal import JsonlJournal
 from core.market_data import MarketData
 from core.order_journal import OrderJournal
@@ -45,16 +46,30 @@ class LiveExecutionEngine:
     def __init__(self, config: dict):
         self.cfg = dict(config)
 
+        run_id = datetime.now(timezone.utc).strftime("live_%Y%m%dT%H%M%SZ")
+        self.run_id = run_id
+
         mode = str(self.cfg.get("mode", "paper")).lower()
         self.paper = mode != "live"
 
         self.alpaca = AlpacaRestClient(paper=self.paper)
         self.portfolio = PortfolioManager()
-        self.reconciler = BrokerReconciler(alpaca=self.alpaca, portfolio=self.portfolio)
+
+        tol = float(self.cfg.get("reconcile_position_mismatch_tolerance", 0.0))
+        self.reconciler = BrokerReconciler(
+            alpaca=self.alpaca,
+            portfolio=self.portfolio,
+            position_mismatch_tolerance=tol,
+        )
 
         journal_path = Path(str(self.cfg.get("order_journal_path", "runs/order_journal.sqlite")))
         self.order_journal = OrderJournal(journal_path)
-        self.orders = OrderManager(alpaca=self.alpaca, journal=self.order_journal)
+
+        intent_path = Path(
+            str(self.cfg.get("order_intent_journal_path", f"runs/{run_id}/order_intents.jsonl"))
+        )
+        self.intent_journal = OrderIntentJournal(intent_path)
+        self.orders = OrderManager(alpaca=self.alpaca, journal=self.order_journal, intent_journal=self.intent_journal)
 
         md_cfg = self.cfg.get("market_data", {}) or {}
         self.market_data = MarketData(
@@ -63,7 +78,6 @@ class LiveExecutionEngine:
             bars_limit=int(md_cfg.get("bars_limit", 200)),
         )
 
-        run_id = datetime.now(timezone.utc).strftime("live_%Y%m%dT%H%M%SZ")
         events_path = Path(str(self.cfg.get("events_path", f"runs/{run_id}/events.jsonl")))
         self.events = JsonlJournal(events_path)
 
@@ -171,6 +185,24 @@ class LiveExecutionEngine:
                 "open_orders": len(state.open_orders),
             }
         )
+
+        # Reconcile broker open orders into local journal for idempotency.
+        try:
+            self.orders.reconcile_open_orders()
+            self.events.append(
+                {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "event": "startup_reconcile_open_orders",
+                }
+            )
+        except Exception as e:
+            self.events.append(
+                {
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "event": "startup_reconcile_open_orders_failed",
+                    "reason": type(e).__name__,
+                }
+            )
 
         while True:
             try:

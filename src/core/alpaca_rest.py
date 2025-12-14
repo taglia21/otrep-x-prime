@@ -6,7 +6,9 @@ from typing import Any
 
 import requests
 
+from core.retry import RetryPolicy, parse_retry_after_seconds, retry_call
 from core.safety import guard_order_submission
+from core.trading_halt import guard_not_halted
 
 
 @dataclass(frozen=True)
@@ -58,10 +60,67 @@ class AlpacaRestClient:
         }
 
     def _get(self, url: str, *, params: dict[str, Any] | None = None) -> requests.Response:
-        return requests.get(url, headers=self._headers, params=params, timeout=self.timeout_s)
+        return self._request("GET", url, params=params, payload=None)
 
     def _post(self, url: str, *, payload: dict[str, Any]) -> requests.Response:
-        return requests.post(url, headers=self._headers, json=payload, timeout=self.timeout_s)
+        return self._request("POST", url, params=None, payload=payload)
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, Any] | None,
+        payload: dict[str, Any] | None,
+    ) -> requests.Response:
+        policy = RetryPolicy()
+
+        def _do() -> requests.Response:
+            try:
+                return requests.request(
+                    method,
+                    url,
+                    headers=self._headers,
+                    params=params,
+                    json=payload,
+                    timeout=self.timeout_s,
+                )
+            except requests.exceptions.Timeout as e:
+                # Represent a timeout as a synthetic response-like object via raising.
+                raise e
+            except requests.exceptions.ConnectionError as e:
+                raise e
+
+        def _call_with_exception_capture() -> requests.Response:
+            try:
+                return _do()
+            except requests.exceptions.Timeout:
+                r = requests.Response()
+                r.status_code = 408
+                r._content = b"{}"  # type: ignore[attr-defined]
+                r.url = url
+                return r
+            except requests.exceptions.ConnectionError:
+                r = requests.Response()
+                r.status_code = 503
+                r._content = b"{}"  # type: ignore[attr-defined]
+                r.url = url
+                return r
+
+        def _is_retryable(r: requests.Response) -> bool:
+            return int(r.status_code) in policy.retry_http_statuses
+
+        def _retry_after(r: requests.Response) -> float | None:
+            if int(r.status_code) != 429:
+                return None
+            return parse_retry_after_seconds(r.headers.get("Retry-After"))
+
+        return retry_call(
+            _call_with_exception_capture,
+            policy=policy,
+            is_retryable=_is_retryable,
+            retry_after_s=_retry_after,
+        )
 
     # ------------------------------ Account state ------------------------------
 
@@ -153,6 +212,9 @@ class AlpacaRestClient:
         tif: str = "day",
         client_order_id: str | None = None,
     ) -> tuple[AlpacaOrder | None, float, int]:
+        # Safety: if the process is halted, never submit.
+        guard_not_halted()
+
         # Safety: hard block unless explicitly enabled.
         guard_order_submission(require_ack=not self.paper)
 
