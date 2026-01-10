@@ -55,3 +55,57 @@ def test_backtest_engine_risk_denies_rebalance_blocks_trades():
 
     assert result.diagnostics["risk_denied_steps"] > 0
     assert len(result.fills) == 0
+
+
+def test_backtest_engine_handles_missing_fill_prices():
+    """Test that missing fill prices are properly tracked and trades are skipped."""
+    # Create data with a missing price at fill time
+    timestamps = pd.to_datetime(
+        ["2025-01-01", "2025-01-02", "2025-01-03", "2025-01-04"], utc=True
+    )
+    prices = pd.DataFrame(
+        {
+            "timestamp": list(timestamps) * 2,
+            "symbol": ["A"] * 4 + ["B"] * 4,
+            "close": [100.0, 110.0, 120.0, 130.0, 50.0, float("nan"), 60.0, 65.0],
+        }
+    )
+
+    cfg = BacktestConfig(starting_cash=10_000.0, fill_delay_bars=1)
+    engine = BacktestEngine(cfg=cfg)
+
+    strat = EqualWeightStrategy({"A": 0.5, "B": 0.5})
+    result = engine.run(prices=prices, strategy=strat)
+
+    # With fill_delay_bars=1:
+    # - i=0: decide at 2025-01-01, fill at 2025-01-02 (A=110, B=NaN) <- B has missing price
+    # - i=1: decide at 2025-01-02, fill at 2025-01-03 (A=120, B=60) <- both OK
+    # - i=2: decide at 2025-01-03, fill at 2025-01-04 (A=130, B=65) <- both OK
+
+    # Should detect 1 missing price (B at 2025-01-02)
+    assert result.diagnostics["missing_fill_prices"] == 1
+
+    # Should have some fills (A should have filled even when B was missing)
+    assert len(result.fills) > 0
+
+
+def test_backtest_engine_preserves_nan_timestamps():
+    """Test that timestamps with NaN prices are preserved in the price panel."""
+    # Test data with a NaN row
+    prices = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2025-01-01", "2025-01-02", "2025-01-03"], utc=True),
+            "symbol": ["TEST"] * 3,
+            "close": [100.0, float("nan"), 110.0],
+        }
+    )
+
+    from src.backtest.engine import _to_price_panel
+
+    panel = _to_price_panel(prices)
+
+    # All 3 timestamps should be preserved
+    assert len(panel) == 3
+    assert panel.index[0] == pd.Timestamp("2025-01-01", tz="UTC")
+    assert panel.index[1] == pd.Timestamp("2025-01-02", tz="UTC")
+    assert panel.index[2] == pd.Timestamp("2025-01-03", tz="UTC")
