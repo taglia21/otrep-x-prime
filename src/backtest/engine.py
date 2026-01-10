@@ -33,13 +33,13 @@ def _to_price_panel(prices: pd.DataFrame) -> pd.DataFrame:
     if {"timestamp", "symbol", "close"}.issubset(prices.columns):
         df = prices.copy()
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-        panel = df.pivot_table(index="timestamp", columns="symbol", values="close", aggfunc="last").sort_index()
+        panel = df.pivot_table(index="timestamp", columns="symbol", values="close", aggfunc="last", dropna=False).sort_index()
         return panel
 
     if {"date", "symbol", "close"}.issubset(prices.columns):
         df = prices.copy()
         df["date"] = pd.to_datetime(df["date"], utc=True)
-        panel = df.pivot_table(index="date", columns="symbol", values="close", aggfunc="last").sort_index()
+        panel = df.pivot_table(index="date", columns="symbol", values="close", aggfunc="last", dropna=False).sort_index()
         panel.index.name = "timestamp"
         return panel
 
@@ -164,13 +164,16 @@ class BacktestEngine:
             # Fill prices at t_fill.
             px_fill = panel.loc[t_fill]
 
+            # Track symbols with missing fill prices to avoid double-counting
+            missing_price_symbols: set[str] = set()
+
             # Convert targets to desired shares using fill prices.
             desired_shares: dict[str, int] = {}
             for s in symbols:
                 w = float(targets.get(s, 0.0))
                 price = float(px_fill.get(s, np.nan))
                 if not np.isfinite(price) or price <= 0:
-                    missing_fill_prices += 1
+                    missing_price_symbols.add(s)
                     desired_shares[s] = holdings[s]
                     continue
 
@@ -190,9 +193,14 @@ class BacktestEngine:
                     if delta == 0:
                         continue
 
+                    # Skip if we already know price is missing (should not happen if desired_shares logic is correct)
+                    if s in missing_price_symbols:
+                        continue
+
                     price = float(px_fill.get(s, np.nan))
                     if not np.isfinite(price) or price <= 0:
-                        missing_fill_prices += 1
+                        # Should not reach here if desired_shares logic is correct, but check anyway
+                        missing_price_symbols.add(s)
                         continue
 
                     # Enforce cash constraint for buys (sell always allowed).
@@ -221,6 +229,9 @@ class BacktestEngine:
                             costs=costs,
                         )
                     )
+
+            # Count missing prices once per step (not per symbol)
+            missing_fill_prices += len(missing_price_symbols)
 
         # Final mark at last available timestamp
         t_last = panel.index[-1]
